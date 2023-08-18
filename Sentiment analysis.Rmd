@@ -1,0 +1,134 @@
+### Load libraries
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidytext)
+library(readxl)
+library(forcats)
+library(wordcloud)
+library(textdata)
+library(tidyr)
+library(topicmodels)
+library(reshape2)
+```
+### Prepare data for analysis
+#### Load data
+```{r}
+data_en <- read_excel("~/Projects/Cosas/Lista.xlsx", sheet = "Sheet2")
+data_en$id <- seq.int(nrow(data_en))
+```
+
+#### Tokenize
+```{r}
+tidy_list_en <- data_en %>% unnest_tokens(word, Text)
+```
+
+#### Remove stop words
+```{r}
+custom_stop <- tribble(
+  ~word, ~lexicon,
+  "rafael", "CUSTOM",
+  "ricardo", "CUSTOM",
+  "lima", "CUSTOM",
+  "daniela", "CUSTOM",
+  "san", "CUSTOM",
+  "addition", "CUSTOM",
+  "world", "CUSTOM",
+  "university","CUSTOM",
+  "peruvian", "CUSTOM",
+  "hotel", "CUSTOM",
+  "school","CUSTOM",
+  "shares", "CUSTOM",
+  "studied", "CUSTOM",
+  "short", "CUSTOM",
+  "ignacio", "CUSTOM",
+  "months", "CUSTOM",
+  "july", "CUSTOM",
+  "diego", "CUSTOM",
+  "2022", "CUSTOM",
+  "26", "CUSTOM",
+)
+
+stop_words2 <- stop_words %>% bind_rows(custom_stop)
+
+tidy_list2_en <- tidy_list_en %>% anti_join(stop_words2)
+```
+
+#### Check words and stop words
+```{r}
+tidy_list2_en %>% count(word) %>% arrange(desc(n))
+```
+
+### Analysis of results
+#### Word cloud
+```{r}
+male <- tidy_list2_en %>% filter(Gender == "Male") %>% count(word)
+female <- tidy_list2_en %>% filter(Gender == "Female") %>% count(word)
+```
+
+```{r}
+tidy_list2_en %>% count(word,Gender, sort = TRUE) %>% filter(n > 2) %>% acast(word ~ Gender, value.var = "n", fill = 0) %>% comparison.cloud(random.order = FALSE ,colors = c("darkblue", "darkolivegreen"), title.colors = c("darkblue", "darkolivegreen"))
+```
+
+#### Sentiment analysis
+##### Get sentiments
+```{r}
+sentiment_review <- tidy_list2_en %>% inner_join(get_sentiments("nrc"))
+```
+##### Build table and graph
+```{r}
+table <- sentiment_review %>% group_by(Gender) %>% count(sentiment) %>% pivot_wider(names_from = Gender, values_from = n) %>% mutate('%Female'= round(Female/sum(Female)*100,0)) %>% mutate('%Male'= round(Male/sum(Male)*100,0)) %>% select(-Female,-Male) %>% pivot_longer(!sentiment, names_to = "Gender", values_to = "Percentage")
+```
+
+```{r}
+ggplot(table, aes(x = sentiment, y = Percentage, fill = Gender)) + geom_col(position = "dodge")
+```
+
+#### Topic modeling males
+```{r}
+dtm_males <- tidy_list2_en %>% filter(Gender == "Male") %>% count(word,id) %>% cast_dtm(id,word,n) %>% as.matrix()
+```
+
+```{r}
+lda_out_males <- LDA(dtm_males, k = 2, method = "Gibbs", control = list(seed = 30))
+lda_topics_males <- lda_out_males %>% tidy(matrix = "beta")
+```
+
+```{r}
+word_probs_males <- lda_topics_males %>% group_by(topic) %>% top_n(3, beta) %>% ungroup() %>% mutate(term2 = fct_reorder(term,beta))
+```
+
+```{r}
+ggplot(word_probs_males, aes(term2, beta, fill = as.factor(topic))) + geom_col(show.legend = FALSE) + facet_wrap(~topic, scales = "free") + coord_flip() + ggtitle("Topic modeling for males")
+```
+
+#### Topic modeling females
+```{r}
+dtm_females <- tidy_list2_en %>% filter(Gender == "Female") %>% count(word,id) %>% cast_dtm(id,word,n) %>% as.matrix()
+```
+
+```{r}
+lda_out_females <- LDA(dtm_females, k = 3, method = "Gibbs", control = list(seed = 30))
+lda_topics_females <- lda_out_females %>% tidy(matrix = "beta")
+```
+
+```{r}
+word_probs_females <- lda_topics_females %>% group_by(topic) %>% top_n(3, beta) %>% ungroup() %>% mutate(term2 = fct_reorder(term,beta))
+```
+
+```{r}
+ggplot(word_probs_females, aes(term2, beta, fill = as.factor(topic))) + geom_col(show.legend = FALSE) + facet_wrap(~topic, scales = "free") + coord_flip() + ggtitle("Topic modeling for females")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
